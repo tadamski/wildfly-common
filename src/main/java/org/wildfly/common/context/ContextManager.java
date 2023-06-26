@@ -259,8 +259,6 @@ public final class ContextManager<C extends Contextual<C>> implements Supplier<C
 
     private C getPrivileged() {
         final State<C> state = stateRef.get();
-        C c = state.current;
-        if (c != null) return c;
         final Thread currentThread = Thread.currentThread();
         final SecurityManager sm = System.getSecurityManager();
         ClassLoader classLoader;
@@ -268,6 +266,10 @@ public final class ContextManager<C extends Contextual<C>> implements Supplier<C
             classLoader = doPrivileged((PrivilegedAction<ClassLoader>) currentThread::getContextClassLoader);
         } else {
             classLoader = currentThread.getContextClassLoader();
+        }
+        C c = state.getCurrent();
+        if (c != null && (classLoader == null || classLoader == state.getCurrentTCCL())) {
+            return c;
         }
         Supplier<C> supplier;
         if (classLoader != null) {
@@ -290,21 +292,37 @@ public final class ContextManager<C extends Contextual<C>> implements Supplier<C
         final C cast = type.cast(newVal);
         final State<C> state = stateRef.get();
         try {
-            return state.current;
+            return state.getCurrent();
         } finally {
-            state.current = cast;
+            state.setCurrent(cast);
         }
     }
 
     void restoreCurrent(C oldVal) {
-        stateRef.get().current = oldVal;
+        stateRef.get().setCurrent(oldVal);
     }
 
     static class State<T> {
-        T current;
+        private T current;
+
+        private ClassLoader currentTCCL;
+
         Supplier<T> defaultSupplier;
 
         State() {
+        }
+
+        void setCurrent(T current) {
+            this.current = current;
+            this.currentTCCL = Thread.currentThread().getContextClassLoader();
+        }
+
+        T getCurrent() {
+            return current;
+        }
+
+        ClassLoader getCurrentTCCL() {
+            return currentTCCL;
         }
     }
 }
